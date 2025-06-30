@@ -1,0 +1,119 @@
+# emotion_scoring_rules.yaml - eGeMAPS 特徴量による感情スコアリングルール
+meta:
+  note: "eGeMAPS 23/88 特徴量で 8 感情をスコア。値は実測で要調整。"
+  neutral_threshold: 0          # 合計0ならニュートラル
+  max_points_per_rule: 1        # 1ルール=1pt（重みは後で可変に）
+
+emotions:
+  anger:
+    - feature: Loudness_sma3            # 声量が高い
+      op: ">"
+      th: 0.30
+    - feature: shimmerLocaldB_sma3nz    # 振幅ゆらぎが大きい
+      op: ">"
+      th: 0.40
+    - feature: HNRdBACF_sma3nz          # 雑音が多い
+      op: "<"
+      th: 1.0
+    - feature: logRelF0-H1-A3_sma3nz    # スペクトル鋭さ
+      op: ">"
+      th: 10
+
+  fear:
+    - feature: jitterLocal_sma3nz       # 周期ゆらぎ
+      op: ">"
+      th: 0.006
+    - feature: shimmerLocaldB_sma3nz
+      op: ">"
+      th: 0.40
+    - feature: F0semitoneFrom27.5Hz_sma3nz   # ピッチ急上昇
+      op: ">"
+      th: 12
+    - feature: alphaRatio_sma3          # 高域強調
+      op: "<"
+      th: -14
+
+  anticipation:
+    - feature: spectralFlux_sma3        # スペクトル変化量
+      op: ">"
+      th: 0.05
+    - feature: mfcc2_sma3              # フォルマント動き
+      op: ">"
+      th: 4.0
+    - feature: F0semitoneFrom27.5Hz_sma3nz
+      op: ">"
+      th: 4
+      op2: "<"
+      th2: 12                           # 中程度のピッチ
+
+  surprise:
+    - feature: spectralFlux_sma3
+      op: ">"
+      th: 0.12
+    - feature: Loudness_sma3
+      op: ">"
+      th: 0.40
+    - feature: HammarbergIndex_sma3     # 高域ピーク
+      op: ">"
+      th: 24
+    - feature: F0semitoneFrom27.5Hz_sma3nz
+      op: ">"
+      th: 14
+
+  joy:
+    - feature: Loudness_sma3
+      op: ">"
+      th: 0.20
+    - feature: HNRdBACF_sma3nz          # ハーモニクス優勢
+      op: ">"
+      th: 2.0
+    - feature: mfcc1_sma3
+      op: ">"
+      th: 20
+    - feature: logRelF0-H1-A3_sma3nz
+      op: ">"
+      th: 5
+
+  sadness:
+    - feature: Loudness_sma3
+      op: "<"
+      th: 0.10
+    - feature: F0semitoneFrom27.5Hz_sma3nz
+      op: "<"
+      th: 3
+    - feature: spectralFlux_sma3
+      op: "<"
+      th: 0.03
+    - feature: mfcc1_sma3
+      op: "<"
+      th: 15
+
+  trust:
+    - feature: jitterLocal_sma3nz
+      op: "<"
+      th: 0.003
+    - feature: shimmerLocaldB_sma3nz
+      op: "<"
+      th: 0.20
+    - feature: HNRdBACF_sma3nz
+      op: ">"
+      th: 1.5
+    - feature: Loudness_sma3
+      op: ">"
+      th: 0.15
+      op2: "<"
+      th2: 0.30                         # 適度な声量
+
+  disgust:
+    - feature: slope500-1500_sma3       # 高域の減衰
+      op: "<"
+      th: -0.005
+    - feature: HammarbergIndex_sma3
+      op: "<"
+      th: 18
+    - feature: logRelF0-H1-H2_sma3nz    # こもった音
+      op: "<"
+      th: 0.5
+    - feature: Loudness_sma3
+      op: "<"
+      th: 0.12
