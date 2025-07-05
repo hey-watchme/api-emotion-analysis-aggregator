@@ -35,7 +35,7 @@ task_status: Dict[str, Dict[str, Any]] = {}
 
 class AnalysisRequest(BaseModel):
     """分析リクエストモデル"""
-    user_id: str
+    device_id: str
     date: str  # YYYY-MM-DD形式
 
 
@@ -85,20 +85,20 @@ async def start_emotion_analysis(request: AnalysisRequest, background_tasks: Bac
         "status": "started",
         "message": "感情分析タスクを開始しました",
         "progress": 0,
-        "user_id": request.user_id,
+        "device_id": request.device_id,
         "date": request.date,
         "created_at": datetime.now().isoformat()
     }
     
     # バックグラウンドタスク追加
-    background_tasks.add_task(execute_emotion_analysis, task_id, request.user_id, request.date)
+    background_tasks.add_task(execute_emotion_analysis, task_id, request.device_id, request.date)
     
-    logger.info(f"OpenSMILE感情分析開始: task_id={task_id}, user_id={request.user_id}, date={request.date}")
+    logger.info(f"OpenSMILE感情分析開始: task_id={task_id}, device_id={request.device_id}, date={request.date}")
     
     return {
         "task_id": task_id,
         "status": "started",
-        "message": f"{request.user_id}/{request.date} の感情分析を開始しました"
+        "message": f"{request.device_id}/{request.date} の感情分析を開始しました"
     }
 
 
@@ -140,12 +140,12 @@ async def delete_analysis_task(task_id: str):
     return {"message": f"タスク {task_id} を削除しました"}
 
 
-async def execute_emotion_analysis(task_id: str, user_id: str, date: str):
+async def execute_emotion_analysis(task_id: str, device_id: str, date: str):
     """
     OpenSMILE感情分析の実行（バックグラウンドタスク）
     """
     try:
-        logger.info(f"🚀 バックグラウンドタスク開始: task_id={task_id}, user_id={user_id}, date={date}")
+        logger.info(f"🚀 バックグラウンドタスク開始: task_id={task_id}, device_id={device_id}, date={date}")
         
         # ステップ1: OpenSMILEデータ収集・感情スコア計算
         task_status[task_id].update({
@@ -159,7 +159,7 @@ async def execute_emotion_analysis(task_id: str, user_id: str, date: str):
         verify_ssl = os.getenv('VERIFY_SSL', 'false').lower() == 'true'
         aggregator = OpenSMILEAggregator(verify_ssl=verify_ssl)
         logger.info(f"🎭 感情分析開始（SSL検証: {'有効' if verify_ssl else '無効'}）...")
-        output_path = await aggregator.run(user_id, date)
+        output_path = await aggregator.run(device_id, date)
         logger.info(f"📄 感情分析結果: output_path={output_path}")
         
         if not output_path:
@@ -185,7 +185,7 @@ async def execute_emotion_analysis(task_id: str, user_id: str, date: str):
         # SSL検証を無効化してダッシュボード環境での接続問題を回避
         verify_ssl = os.getenv('VERIFY_SSL', 'false').lower() == 'true'
         uploader = OpenSMILESummaryUploader(verify_ssl=verify_ssl)
-        upload_result = await uploader.run(user_id, date)
+        upload_result = await uploader.run(device_id, date)
         logger.info(f"📤 アップロード結果: {upload_result}")
         
         # 結果ファイル読み込み

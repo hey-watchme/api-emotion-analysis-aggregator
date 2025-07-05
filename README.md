@@ -13,7 +13,7 @@ OpenSMILE特徴量データの収集・感情スコア集計・アップロー�
 
 ### ✅ 動作検証結果
 **検証日**: 2025-06-30  
-**検証データ**: user123/2025-06-30  
+**検証データ**: device123/2025-06-30  
 **結果**: 正常動作確認済み
 
 - ✅ API server 起動成功（ポート8012）
@@ -201,7 +201,7 @@ POST /analyze/opensmile-aggregator
 Content-Type: application/json
 
 {
-  "user_id": "user123",    # 必須: ユーザー識別子
+  "device_id": "device123",    # 必須: デバイス識別子
   "date": "2025-06-26"     # 必須: 分析対象日（YYYY-MM-DD形式）
 }
 ```
@@ -211,7 +211,7 @@ Content-Type: application/json
 {
   "task_id": "550e8400-e29b-41d4-a716-446655440000",
   "status": "started",
-  "message": "user123/2025-06-26 の感情分析を開始しました"
+  "message": "device123/2025-06-26 の感情分析を開始しました"
 }
 ```
 
@@ -237,7 +237,7 @@ GET /analyze/opensmile-aggregator/550e8400-e29b-41d4-a716-446655440000
   "status": "running",
   "message": "OpenSMILEデータ収集・感情分析中...",
   "progress": 25,
-  "user_id": "user123",
+  "device_id": "device123",
   "date": "2025-06-26",
   "created_at": "2025-06-30T10:30:00.000000"
 }
@@ -261,7 +261,7 @@ GET /analyze/opensmile-aggregator/550e8400-e29b-41d4-a716-446655440000
     },
     "upload": {"success": 1, "failed": 0, "total": 1},
     "total_emotion_points": 450,
-    "output_path": "/Users/kaya.matsumoto/data/data_accounts/user123/2025-06-26/opensmile-summary/result.json",
+    "output_path": "/Users/kaya.matsumoto/data/data_accounts/device123/2025-06-26/opensmile-summary/result.json",
     "emotion_graph_length": 48
   }
 }
@@ -293,14 +293,14 @@ GET /analyze/opensmile-aggregator
     {
       "task_id": "550e8400-e29b-41d4-a716-446655440000",
       "status": "completed",
-      "user_id": "user123",
+      "device_id": "device123",
       "date": "2025-06-26",
       "progress": 100
     },
     {
       "task_id": "660e8400-e29b-41d4-a716-446655440001",
       "status": "running",
-      "user_id": "user456",
+      "device_id": "device456",
       "date": "2025-06-27",
       "progress": 50
     }
@@ -403,7 +403,7 @@ joy:
 
 **出力ファイルパス:**
 ```
-/Users/kaya.matsumoto/data/data_accounts/{user_id}/{YYYY-MM-DD}/opensmile-summary/result.json
+/Users/kaya.matsumoto/data/data_accounts/{device_id}/{YYYY-MM-DD}/opensmile-summary/result.json
 ```
 
 **JSON構造:**
@@ -458,10 +458,10 @@ class OpenSMILEAnalysisClient:
             print(f"❌ API接続エラー: {e}")
             return False
     
-    async def start_analysis(self, user_id, date):
+    async def start_analysis(self, device_id, date):
         """感情分析を開始してタスクIDを取得"""
         try:
-            data = {"user_id": user_id, "date": date}
+            data = {"device_id": device_id, "date": date}
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     f"{self.base_url}/analyze/opensmile-aggregator",
@@ -516,9 +516,9 @@ class OpenSMILEAnalysisClient:
             
             await asyncio.sleep(2)  # 2秒間隔でチェック
     
-    async def run_full_analysis(self, user_id, date):
+    async def run_full_analysis(self, device_id, date):
         """完全な感情分析フローを実行"""
-        print(f"🚀 OpenSMILE感情分析開始: {user_id} / {date}")
+        print(f"🚀 OpenSMILE感情分析開始: {device_id} / {date}")
         
         # 1. ヘルスチェック
         if not await self.health_check():
@@ -526,7 +526,7 @@ class OpenSMILEAnalysisClient:
             return None
         
         # 2. 感情分析開始
-        task_id = await self.start_analysis(user_id, date)
+        task_id = await self.start_analysis(device_id, date)
         if not task_id:
             return None
         
@@ -569,13 +569,13 @@ async def main():
     client = OpenSMILEAnalysisClient()
     
     # 単体分析実行
-    result = await client.run_full_analysis("user123", "2025-06-26")
+    result = await client.run_full_analysis("device123", "2025-06-26")
     
     # 複数日分析実行
     dates = ["2025-06-24", "2025-06-25", "2025-06-26"]
     for date in dates:
         print(f"\n{'='*60}")
-        await client.run_full_analysis("user123", date)
+        await client.run_full_analysis("device123", date)
         await asyncio.sleep(1)  # 1秒間隔
 
 # 実行
@@ -589,10 +589,10 @@ if __name__ == "__main__":
 # OpenSMILE感情分析 実行スクリプト
 
 API_BASE="http://localhost:8012"
-USER_ID="user123"
+DEVICE_ID="device123"
 DATE="2025-06-26"
 
-echo "🚀 OpenSMILE感情分析開始: $USER_ID / $DATE"
+echo "🚀 OpenSMILE感情分析開始: $DEVICE_ID / $DATE"
 
 # 1. ヘルスチェック
 echo "🔍 APIヘルスチェック..."
@@ -606,7 +606,7 @@ echo "✅ API稼働中"
 echo "🎭 感情分析開始..."
 RESPONSE=$(curl -s -X POST "$API_BASE/analyze/opensmile-aggregator" \
   -H "Content-Type: application/json" \
-  -d "{\"user_id\": \"$USER_ID\", \"date\": \"$DATE\"}")
+  -d "{\"device_id\": \"$DEVICE_ID\", \"date\": \"$DATE\"}")
 
 TASK_ID=$(echo "$RESPONSE" | jq -r '.task_id')
 if [ "$TASK_ID" = "null" ]; then
@@ -745,3 +745,13 @@ emotion_scoring_rules.yaml
 - エラーハンドリングベストプラクティス  
 - 感情スコアリングルール調整方法
 - パフォーマンス最適化手法
+
+## 📝 変更履歴
+
+### v2.0.0 (2025-07-05)
+- **デバイスベース識別に変更**: `user_id` → `device_id` への全面移行
+- **Whisper APIとの統一**: デバイス識別システムの一貫性確保
+- **API仕様更新**: 全エンドポイントでdevice_idパラメータを使用
+- **データパス変更**: `/data/data_accounts/{device_id}/{date}/` 構造に更新
+- **動作確認完了**: device_id `d067d407-cf73-4174-a9c1-d91fb60d64d0` での実データ処理成功（2025-07-05データ、総感情ポイント50）
+- **ドキュメント更新**: README、使用例、curlスクリプト全体の修正完了

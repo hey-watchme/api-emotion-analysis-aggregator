@@ -45,9 +45,9 @@ class OpenSMILEAggregator:
                 slots.append(f"{hour:02d}-{minute:02d}")
         return slots
     
-    def _build_url(self, user_id: str, date: str, time_slot: str) -> str:
+    def _build_url(self, device_id: str, date: str, time_slot: str) -> str:
         """指定されたパラメータからOpenSMILE専用Vault API URLを構築"""
-        return f"{self.base_url}?user_id={user_id}&date={date}&slot={time_slot}"
+        return f"{self.base_url}?device_id={device_id}&date={date}&slot={time_slot}"
     
     async def _fetch_json(self, session: aiohttp.ClientSession, url: str) -> Optional[Dict]:
         """単一のOpenSMILE JSONファイルを非同期で取得"""
@@ -85,9 +85,9 @@ class OpenSMILEAggregator:
             print(f"💥 予期しないエラー: {url}, {e}")
             return None
     
-    async def fetch_all_data(self, user_id: str, date: str) -> Dict[str, Dict]:
+    async def fetch_all_data(self, device_id: str, date: str) -> Dict[str, Dict]:
         """指定日の全OpenSMILEデータを並列取得"""
-        print(f"データ取得開始: user_id={user_id}, date={date}")
+        print(f"データ取得開始: device_id={device_id}, date={date}")
         
         results = {}
         
@@ -102,7 +102,7 @@ class OpenSMILEAggregator:
             # 全スロットのタスクを並列実行
             tasks = []
             for slot in self.time_slots:
-                url = self._build_url(user_id, date, slot)
+                url = self._build_url(device_id, date, slot)
                 task = self._fetch_json(session, url)
                 tasks.append((slot, task))
             
@@ -142,10 +142,10 @@ class OpenSMILEAggregator:
         print(f"感情スコア処理完了: 総感情ポイント数 {total_emotions}")
         return slot_scores
     
-    def save_result(self, result: Dict, user_id: str, date: str) -> str:
+    def save_result(self, result: Dict, device_id: str, date: str) -> str:
         """結果をローカルファイルに保存"""
         # 保存パスを構築
-        base_path = Path(f"/Users/kaya.matsumoto/data/data_accounts/{user_id}/{date}/opensmile-summary")
+        base_path = Path(f"/Users/kaya.matsumoto/data/data_accounts/{device_id}/{date}/opensmile-summary")
         base_path.mkdir(parents=True, exist_ok=True)
         
         output_path = base_path / "result.json"
@@ -157,12 +157,12 @@ class OpenSMILEAggregator:
         print(f"結果保存完了: {output_path}")
         return str(output_path)
     
-    async def run(self, user_id: str, date: str) -> str:
+    async def run(self, device_id: str, date: str) -> str:
         """メイン処理実行"""
-        print(f"OpenSMILE感情分析集計処理開始: {user_id}, {date}")
+        print(f"OpenSMILE感情分析集計処理開始: {device_id}, {date}")
         
         # データ取得
-        slot_data = await self.fetch_all_data(user_id, date)
+        slot_data = await self.fetch_all_data(device_id, date)
         
         if not slot_data:
             print("取得できたデータがありません")
@@ -175,7 +175,7 @@ class OpenSMILEAggregator:
         result = self.emotion_scorer.generate_full_day_data(slot_scores, date)
         
         # 結果保存
-        output_path = self.save_result(result, user_id, date)
+        output_path = self.save_result(result, device_id, date)
         
         print("OpenSMILE感情分析集計処理完了")
         return output_path
@@ -184,7 +184,7 @@ class OpenSMILEAggregator:
 async def main():
     """コマンドライン実行用メイン関数"""
     parser = argparse.ArgumentParser(description="OpenSMILE感情分析データ集計ツール")
-    parser.add_argument("user_id", help="ユーザーID（例: user123）")
+    parser.add_argument("device_id", help="デバイスID（例: device123）")
     parser.add_argument("date", help="対象日付（YYYY-MM-DD形式）")
     parser.add_argument("--base-url", default="https://api.hey-watch.me/download-opensmile", help="OpenSMILE専用Vault API ベースURL")
     
@@ -199,7 +199,7 @@ async def main():
     
     # 集計実行
     aggregator = OpenSMILEAggregator(args.base_url)
-    output_path = await aggregator.run(args.user_id, args.date)
+    output_path = await aggregator.run(args.device_id, args.date)
     
     if output_path:
         print(f"\n✅ 処理完了")

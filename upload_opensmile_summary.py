@@ -44,7 +44,7 @@ class OpenSMILESummaryUploader:
     def find_all_summary_files(self) -> List[Tuple[str, str, Path]]:
         """
         ベースディレクトリ配下の全OpenSMILEサマリーファイルを探索
-        Returns: [(user_id, date, file_path), ...]
+        Returns: [(device_id, date, file_path), ...]
         """
         summary_files = []
         
@@ -52,14 +52,14 @@ class OpenSMILESummaryUploader:
             self.logger.warning(f"ベースディレクトリが存在しません: {self.base_dir}")
             return summary_files
         
-        # パターン: /Users/kaya.matsumoto/data/data_accounts/{user_id}/{YYYY-MM-DD}/opensmile-summary/result.json
-        for user_dir in self.base_dir.iterdir():
-            if not user_dir.is_dir():
+        # パターン: /Users/kaya.matsumoto/data/data_accounts/{device_id}/{YYYY-MM-DD}/opensmile-summary/result.json
+        for device_dir in self.base_dir.iterdir():
+            if not device_dir.is_dir():
                 continue
                 
-            user_id = user_dir.name
+            device_id = device_dir.name
             
-            for date_dir in user_dir.iterdir():
+            for date_dir in device_dir.iterdir():
                 if not date_dir.is_dir():
                     continue
                 
@@ -73,17 +73,17 @@ class OpenSMILESummaryUploader:
                 
                 summary_file = date_dir / "opensmile-summary" / "result.json"
                 if summary_file.exists():
-                    summary_files.append((user_id, date, summary_file))
-                    self.logger.debug(f"発見: {user_id}/{date} - {summary_file}")
+                    summary_files.append((device_id, date, summary_file))
+                    self.logger.debug(f"発見: {device_id}/{date} - {summary_file}")
         
         self.logger.info(f"合計 {len(summary_files)} 個のOpenSMILEサマリーファイルを発見")
         return summary_files
     
-    def find_summary_file(self, user_id: str, date: str) -> Optional[Path]:
+    def find_summary_file(self, device_id: str, date: str) -> Optional[Path]:
         """
-        特定のユーザー・日付のOpenSMILEサマリーファイルを取得
+        特定のデバイス・日付のOpenSMILEサマリーファイルを取得
         """
-        file_path = self.base_dir / user_id / date / "opensmile-summary" / "result.json"
+        file_path = self.base_dir / device_id / date / "opensmile-summary" / "result.json"
         
         if file_path.exists():
             return file_path
@@ -92,12 +92,12 @@ class OpenSMILESummaryUploader:
             return None
     
     async def upload_summary_file(self, session: aiohttp.ClientSession, 
-                                 user_id: str, date: str, file_path: Path) -> bool:
+                                 device_id: str, date: str, file_path: Path) -> bool:
         """
         単一のOpenSMILEサマリーファイルをアップロード
         """
         try:
-            self.logger.info(f"アップロード開始: {user_id}/{date}")
+            self.logger.info(f"アップロード開始: {device_id}/{date}")
             
             # ファイル読み込み
             with open(file_path, 'r', encoding='utf-8') as f:
@@ -108,7 +108,7 @@ class OpenSMILESummaryUploader:
             form_data.add_field('file', file_content, 
                               filename='result.json', 
                               content_type='application/json')
-            form_data.add_field('user_id', user_id)
+            form_data.add_field('device_id', device_id)
             form_data.add_field('date', date)
             
             # アップロード実行
@@ -119,25 +119,25 @@ class OpenSMILESummaryUploader:
             ) as response:
                 
                 if response.status == 200:
-                    self.logger.info(f"✅ アップロード成功: {user_id}/{date}")
+                    self.logger.info(f"✅ アップロード成功: {device_id}/{date}")
                     return True
                 else:
                     error_text = await response.text()
-                    self.logger.error(f"❌ アップロード失敗: {user_id}/{date} - "
+                    self.logger.error(f"❌ アップロード失敗: {device_id}/{date} - "
                                     f"HTTP {response.status}: {error_text}")
                     return False
                     
         except aiohttp.ClientError as e:
-            self.logger.error(f"❌ 接続エラー: {user_id}/{date} - {e}")
+            self.logger.error(f"❌ 接続エラー: {device_id}/{date} - {e}")
             return False
         except json.JSONDecodeError as e:
-            self.logger.error(f"❌ JSON解析エラー: {user_id}/{date} - {e}")
+            self.logger.error(f"❌ JSON解析エラー: {device_id}/{date} - {e}")
             return False
         except FileNotFoundError:
             self.logger.error(f"❌ ファイルが見つかりません: {file_path}")
             return False
         except Exception as e:
-            self.logger.error(f"❌ 予期しないエラー: {user_id}/{date} - {e}")
+            self.logger.error(f"❌ 予期しないエラー: {device_id}/{date} - {e}")
             return False
     
     async def upload_all_summaries(self) -> Dict[str, int]:
@@ -161,12 +161,12 @@ class OpenSMILESummaryUploader:
         async with aiohttp.ClientSession(connector=connector) as session:
             # 並列アップロード実行
             tasks = []
-            for user_id, date, file_path in summary_files:
-                task = self.upload_summary_file(session, user_id, date, file_path)
-                tasks.append((user_id, date, task))
+            for device_id, date, file_path in summary_files:
+                task = self.upload_summary_file(session, device_id, date, file_path)
+                tasks.append((device_id, date, task))
             
             # 結果収集
-            for user_id, date, task in tasks:
+            for device_id, date, task in tasks:
                 success = await task
                 if success:
                     success_count += 1
@@ -179,14 +179,14 @@ class OpenSMILESummaryUploader:
             "total": len(summary_files)
         }
     
-    async def upload_specific_summary(self, user_id: str, date: str) -> bool:
+    async def upload_specific_summary(self, device_id: str, date: str) -> bool:
         """
-        特定のユーザー・日付のOpenSMILEサマリーファイルをアップロード
+        特定のデバイス・日付のOpenSMILEサマリーファイルをアップロード
         """
-        file_path = self.find_summary_file(user_id, date)
+        file_path = self.find_summary_file(device_id, date)
         
         if not file_path:
-            self.logger.error(f"ファイルが存在しません: {user_id}/{date}")
+            self.logger.error(f"ファイルが存在しません: {device_id}/{date}")
             return False
         
         # SSL設定を含むConnectorを作成
@@ -195,19 +195,19 @@ class OpenSMILESummaryUploader:
         )
         
         async with aiohttp.ClientSession(connector=connector) as session:
-            return await self.upload_summary_file(session, user_id, date, file_path)
+            return await self.upload_summary_file(session, device_id, date, file_path)
     
-    async def run(self, user_id: Optional[str] = None, date: Optional[str] = None) -> Dict[str, int]:
+    async def run(self, device_id: Optional[str] = None, date: Optional[str] = None) -> Dict[str, int]:
         """
         メイン実行関数
-        user_id, dateが指定されていれば特定ファイル、未指定なら全ファイル処理
+        device_id, dateが指定されていれば特定ファイル、未指定なら全ファイル処理
         """
         self.logger.info("OpenSMILEサマリーアップロード開始")
         
-        if user_id and date:
+        if device_id and date:
             # 特定ファイルのアップロード
-            self.logger.info(f"特定ファイルをアップロード: {user_id}/{date}")
-            success = await self.upload_specific_summary(user_id, date)
+            self.logger.info(f"特定ファイルをアップロード: {device_id}/{date}")
+            success = await self.upload_specific_summary(device_id, date)
             return {
                 "success": 1 if success else 0,
                 "failed": 0 if success else 1,
@@ -222,7 +222,7 @@ class OpenSMILESummaryUploader:
 async def main():
     """コマンドライン実行用メイン関数"""
     parser = argparse.ArgumentParser(description="OpenSMILEサマリーアップロードツール")
-    parser.add_argument("--user-id", help="特定ユーザーID（指定時は --date も必須）")
+    parser.add_argument("--device-id", help="特定デバイスID（指定時は --date も必須）")
     parser.add_argument("--date", help="特定日付（YYYY-MM-DD形式）")
     parser.add_argument("--upload-url", 
                        default="https://api.hey-watch.me/upload/analysis/opensmile-summary", 
@@ -236,8 +236,8 @@ async def main():
         logging.getLogger().setLevel(logging.DEBUG)
     
     # 引数検証
-    if (args.user_id and not args.date) or (not args.user_id and args.date):
-        print("エラー: --user-id と --date は同時に指定してください")
+    if (args.device_id and not args.date) or (not args.device_id and args.date):
+        print("エラー: --device-id と --date は同時に指定してください")
         return
     
     if args.date:
@@ -249,7 +249,7 @@ async def main():
     
     # アップロード実行
     uploader = OpenSMILESummaryUploader(args.upload_url)
-    result = await uploader.run(args.user_id, args.date)
+    result = await uploader.run(args.device_id, args.date)
     
     # 結果出力
     print(f"\n📊 アップロード結果")

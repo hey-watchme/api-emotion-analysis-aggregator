@@ -17,10 +17,10 @@ class OpenSMILEAnalysisClient:
     def __init__(self, base_url: str = "http://localhost:8012"):
         self.base_url = base_url
     
-    async def start_analysis(self, user_id: str, date: str) -> str:
+    async def start_analysis(self, device_id: str, date: str) -> str:
         """感情分析を開始してタスクIDを取得"""
         url = f"{self.base_url}/analyze/opensmile-aggregator"
-        data = {"user_id": user_id, "date": date}
+        data = {"device_id": device_id, "date": date}
         
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=data) as response:
@@ -72,18 +72,18 @@ async def example_api_usage():
     client = OpenSMILEAnalysisClient()
     
     # 実行パラメータ
-    user_id = "user123"
+    device_id = "device123"
     date = "2025-06-26"  # 実際の日付に変更してください
     
     print(f"📋 感情分析パラメータ:")
-    print(f"  ユーザーID: {user_id}")
+    print(f"  デバイスID: {device_id}")
     print(f"  対象日付: {date}")
     print()
     
     try:
         # 1. 感情分析開始
         print("🚀 感情分析開始...")
-        task_id = await client.start_analysis(user_id, date)
+        task_id = await client.start_analysis(device_id, date)
         print(f"   タスクID: {task_id}")
         
         # 2. 完了まで待機
