@@ -9,7 +9,7 @@ eGeMapsベースの感情スコアリングで日次集計結果をSupabaseのem
 
 import asyncio
 import json
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from datetime import datetime
 import argparse
 
@@ -151,7 +151,7 @@ class OpenSMILEAggregator:
         
         return success
     
-    async def run(self, device_id: str, date: str) -> bool:
+    async def run(self, device_id: str, date: str) -> Dict[str, Any]:
         """メイン処理実行"""
         print(f"OpenSMILE感情分析集計処理開始: {device_id}, {date}")
         
@@ -159,8 +159,18 @@ class OpenSMILEAggregator:
         slot_data = await self.fetch_all_data(device_id, date)
         
         if not slot_data:
-            print("取得できたデータがありません")
-            return False
+            print(f"指定された日付（{date}）にはデータが存在しません")
+            # データがない場合でも、空のデータを保存（全スロット0）
+            empty_scores = {}
+            result = self.emotion_scorer.generate_full_day_data(empty_scores, date)
+            success = await self.save_result_to_supabase(result, device_id, date)
+            return {
+                "success": success,
+                "has_data": False,
+                "message": f"指定された日付（{date}）にはデータが存在しません。空のデータを保存しました。",
+                "processed_slots": 0,
+                "total_emotion_points": 0
+            }
         
         # 感情スコア計算
         slot_scores = self.process_emotion_scores(slot_data)
@@ -171,12 +181,23 @@ class OpenSMILEAggregator:
         # 結果をSupabaseに保存
         success = await self.save_result_to_supabase(result, device_id, date)
         
+        # 総感情ポイント計算
+        total_emotion_points = sum(
+            sum(slot.values()) for slot in slot_scores.values()
+        )
+        
         if success:
             print("OpenSMILE感情分析集計処理完了")
         else:
             print("OpenSMILE感情分析集計処理失敗")
         
-        return success
+        return {
+            "success": success,
+            "has_data": True,
+            "message": f"感情分析が完了しました",
+            "processed_slots": len(slot_data),
+            "total_emotion_points": total_emotion_points
+        }
 
 
 async def main():

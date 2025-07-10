@@ -7,6 +7,7 @@ FastAPIを使用してOpenSMILE感情分析機能をREST APIとして提供す�
 """
 
 from fastapi import FastAPI, BackgroundTasks, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 import uuid
@@ -22,6 +23,15 @@ app = FastAPI(
     title="OpenSMILE感情分析API",
     description="OpenSMILE特徴量データの収集・感情スコア集計・Supabase保存API",
     version="2.0.0"
+)
+
+# CORS設定
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 本番環境では適切なオリジンを指定してください
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ログ設定
@@ -156,10 +166,10 @@ async def execute_emotion_analysis(task_id: str, device_id: str, date: str):
         logger.info(f"📊 OpenSMILEAggregator インスタンス作成中...")
         aggregator = OpenSMILEAggregator()
         logger.info(f"🎭 感情分析開始（Supabaseからデータ取得）...")
-        success = await aggregator.run(device_id, date)
-        logger.info(f"📄 感情分析結果: success={success}")
+        result = await aggregator.run(device_id, date)
+        logger.info(f"📄 感情分析結果: {result}")
         
-        if not success:
+        if not result["success"]:
             logger.error(f"❌ 感情分析失敗")
             task_status[task_id].update({
                 "status": "failed",
@@ -171,33 +181,26 @@ async def execute_emotion_analysis(task_id: str, device_id: str, date: str):
         
         logger.info(f"✅ 感情分析成功（Supabaseに保存済み）")
         
-        # 統計情報を取得するために、仮の結果データを作成
-        # 実際の実装では、Supabaseから再取得するか、aggregatorから返すように変更できます
-        from emotion_scoring import EmotionScorer
-        emotion_scorer = EmotionScorer()
-        
-        # 仮の結果データ（実際にはSupabaseから取得した方が良い）
-        analysis_result = {
-            "date": date,
-            "emotion_graph": []  # TODO: 実際のデータを取得
-        }
-        
-        # 統計情報計算（仮）
-        total_emotion_points = 0  # TODO: 実際の計算
-        
-        logger.info(f"🎉 感情分析完了")
+        # 成功メッセージをデータの有無に応じて調整
+        message = result["message"]
+        if not result["has_data"]:
+            logger.info(f"📭 データなし: {message}")
+        else:
+            logger.info(f"🎉 感情分析完了: {result['processed_slots']}スロット処理")
         
         # 成功
         task_status[task_id].update({
             "status": "completed",
-            "message": "感情分析完了",
+            "message": message,
             "progress": 100,
             "result": {
                 "storage": {
                     "location": "Supabase emotion_opensmile_summary table",
                     "success": True
                 },
-                "total_emotion_points": total_emotion_points,
+                "has_data": result["has_data"],
+                "processed_slots": result["processed_slots"],
+                "total_emotion_points": result["total_emotion_points"],
                 "emotion_graph_length": 48  # 48スロット固定
             }
         })

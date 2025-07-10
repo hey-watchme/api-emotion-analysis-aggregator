@@ -1,6 +1,29 @@
 # OpenSMILE感情分析API システム - 完全仕様書
 
-OpenSMILE特徴量データの収集・感情スコア集計・アップロードを行うFastAPIベースのREST APIサービスです。
+OpenSMILE特徴量データの収集・感情スコア集計・Supabase保存を行うFastAPIベースのREST APIサービスです。
+
+## 🆕 最新アップデート (2025-07-10)
+
+### 1. **WatchMe Admin統合**
+- Admin画面の感情グラフタブにOpenSMILE Aggregatorセクションを追加
+- デバイスIDと日付を指定して感情集計処理を実行可能
+- タスクの進行状況をリアルタイムで表示
+- 処理結果（データ有無、処理スロット数、総感情ポイント）を詳細表示
+
+### 2. **CORS対応**
+- FastAPIにCORSMiddlewareを追加
+- Admin画面（http://localhost:9000）からのAPIコール（http://localhost:8012）に対応
+
+### 3. **データ不在時の処理改善**
+- データが存在しない日付でも正常な処理として扱う
+- 空のデータ（全スロット0）をSupabaseに保存
+- 「指定された日付にはデータが存在しません」というメッセージを返す
+- ライフログツールとして測定していない日があっても問題なく処理
+
+### 4. **Supabase完全移行**
+- 入力: Vault API → Supabase emotion_opensmileテーブル
+- 出力: ローカルファイル + Vault API → Supabase emotion_opensmile_summaryテーブル（ワイド型JSONB）
+- upload_opensmile_summary.pyを削除（不要になったため）
 
 ## 📋 コードベース調査結果
 
@@ -41,8 +64,8 @@ OpenSMILE特徴量データの収集・感情スコア集計・アップロー�
 
 4. **データ統合**
    - Supabaseからのデータ取得: emotion_opensmileテーブル
-   - Vault APIへのアップロード: `https://api.hey-watch.me/upload/analysis/opensmile-summary`
-   - SSL証明書検証無効化対応（アップロード時）
+   - Supabaseへのデータ保存: emotion_opensmile_summaryテーブル（ワイド型JSONB形式）
+   - 他のグラフデータベースと同じテーブル構造を採用
 
 #### 📁 **ファイル別機能分析**
 
