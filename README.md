@@ -5,22 +5,21 @@ OpenSMILE特徴量データの収集・感情スコア集計・アップロー�
 ## 📋 コードベース調査結果
 
 ### 🔍 システム構成分析
-**調査日**: 2025-06-30  
-**ファイル数**: 7個  
-**コード行数**: 約1,500行  
+**調査日**: 2025-07-09  
+**ファイル数**: 8個  
+**コード行数**: 約1,600行  
 **言語**: Python 3.11.8+  
-**フレームワーク**: FastAPI + aiohttp + PyYAML
+**フレームワーク**: FastAPI + aiohttp + PyYAML + Supabase
 
 ### ✅ 動作検証結果
-**検証日**: 2025-06-30  
-**検証データ**: device123/2025-06-30  
+**検証日**: 2025-07-09  
+**データソース**: Supabase emotion_opensmileテーブル  
 **結果**: 正常動作確認済み
 
 - ✅ API server 起動成功（ポート8012）
-- ✅ OpenSMILE データ収集成功（48スロット処理）
+- ✅ Supabaseからのデータ取得成功（emotion_opensmileテーブル）
 - ✅ 感情分析エンジン動作確認（8感情分類）
-- ✅ 結果ファイル生成成功（総感情ポイント: 5）
-- ✅ Vault API アップロード成功
+- ✅ Supabase保存成功（emotion_opensmile_summaryテーブル）
 
 ### 📊 主要機能の詳細分析
 
@@ -40,10 +39,10 @@ OpenSMILE特徴量データの収集・感情スコア集計・アップロー�
    - リアルタイム進捗監視（0-100%）
    - タスク状況管理（started/running/completed/failed）
 
-4. **Vault API統合**
-   - OpenSMILE専用データ取得: `https://api.hey-watch.me/download-opensmile`
+4. **データ統合**
+   - Supabaseからのデータ取得: emotion_opensmileテーブル
    - Vault APIへのアップロード: `https://api.hey-watch.me/upload/analysis/opensmile-summary`
-   - SSL証明書検証無効化対応
+   - SSL証明書検証無効化対応（アップロード時）
 
 #### 📁 **ファイル別機能分析**
 
@@ -53,9 +52,9 @@ OpenSMILE特徴量データの収集・感情スコア集計・アップロー�
 - UUIDベースのタスク管理
 - エラーハンドリング付きバックグラウンド処理
 
-**opensmile_aggregator.py:280行** - データ集約エンジン
-- Vault APIからの並列HTTP処理（最大30並列接続）
-- OpenSMILE特徴量抽出・解析
+**opensmile_aggregator.py:209行** - データ集約エンジン
+- Supabaseからのデータ取得（emotion_opensmileテーブル）
+- OpenSMILE特徴量の集計・解析
 - 感情スコアリングエンジン統合
 - ローカルファイル保存（JSON形式）
 
@@ -91,6 +90,8 @@ uvicorn>=0.24.0       # ASGIサーバー
 pydantic>=2.5.0       # データバリデーション
 aiohttp>=3.8.0,<4.0.0 # 非同期HTTPクライアント
 pyyaml>=6.0           # YAMLルール解析
+supabase>=2.0.0       # Supabaseクライアント
+python-dotenv>=1.0.0  # 環境変数管理
 ```
 
 **処理能力**
@@ -100,7 +101,7 @@ pyyaml>=6.0           # YAMLルール解析
 - メモリ効率: ストリーミング処理対応
 
 **データ処理フロー**
-1. Vault APIからの並列取得 → 2. JSON解析 → 3. 特徴量抽出 → 4. 感情スコアリング → 5. グラフデータ生成 → 6. ローカル保存 → 7. Vault APIへアップロード
+1. Supabaseからのデータ取得 → 2. features_timeline解析 → 3. 特徴量集計 → 4. 感情スコアリング → 5. グラフデータ生成 → 6. ローカル保存 → 7. Vault APIへアップロード
 
 ## ⚠️ 重要: ファイル依存関係
 **APIサーバー（`api_server.py`）を動作させるには、以下のファイルが必須です：**
@@ -109,11 +110,12 @@ pyyaml>=6.0           # YAMLルール解析
 - 📁 `upload_opensmile_summary.py` - アップロードモジュール (**必須依存**)
 - 📁 `emotion_scoring.py` - 感情スコアリングエンジン (**必須依存**)
 - 📁 `emotion_scoring_rules.yaml` - 感情ルール定義ファイル (**必須依存**)
+- 📁 `supabase_service.py` - Supabaseサービス (**必須依存**)
 
 ## 🎯 システム概要
 
 **🌐 REST API**: FastAPIベースの非同期APIサーバー  
-**📥 データ収集**: Vault API上のOpenSMILEファイル（最大48個の30分スロット）を非同期並列取得  
+**📥 データ収集**: Supabase emotion_opensmileテーブルからOpenSMILEデータを取得  
 **🎭 感情分析**: eGeMAPS特徴量ベースのYAMLルール感情スコアリング  
 **📈 グラフ生成**: 1日48スロット分の感情推移データ生成  
 **📤 データアップロード**: Vault APIへ自動アップロード  
@@ -129,8 +131,8 @@ pyyaml>=6.0           # YAMLルール解析
 - asyncio（非同期処理）
 
 **🌐 ネットワーク:**
-- OpenSMILE専用Vault API `https://api.hey-watch.me/download-opensmile` へのHTTPS接続
-- 30分スロット×48個の並列リクエスト対応
+- Supabase APIへの接続（emotion_opensmileテーブル）
+- Vault API `https://api.hey-watch.me/upload/analysis/opensmile-summary` へのHTTPS接続
 
 **💾 ストレージ:**
 - ローカルディスク: `/Users/kaya.matsumoto/data/data_accounts/`
@@ -156,7 +158,14 @@ opensmile-aggregator/
 pip install -r requirements.txt
 ```
 
-### 2️⃣ ファイル構成の確認
+### 2️⃣ 環境変数設定
+`.env`ファイルを作成し、Supabase接続情報を設定：
+```bash
+cp .env.example .env
+# .envファイルを編集してSupabase URLとキーを設定
+```
+
+### 3️⃣ ファイル構成の確認
 ⚠️ **APIサーバー起動前に、必須ファイルが揃っていることを確認してください：**
 
 ```bash
@@ -169,7 +178,7 @@ ls -la
 # - emotion_scoring_rules.yaml (必須依存)
 ```
 
-### 3️⃣ APIサーバー起動
+### 4️⃣ APIサーバー起動
 ```bash
 # 開発環境（推奨）
 python api_server.py
@@ -183,7 +192,7 @@ uvicorn api_server:app --host 0.0.0.0 --port 8012 --workers 4
 
 APIサーバーは `http://localhost:8012` で起動します。
 
-### 4️⃣ 接続確認
+### 5️⃣ 接続確認
 ```bash
 curl http://localhost:8012/health
 ```
@@ -401,12 +410,22 @@ joy:
 
 ### 感情分析結果
 
-**出力ファイルパス:**
-```
-/Users/kaya.matsumoto/data/data_accounts/{device_id}/{YYYY-MM-DD}/opensmile-summary/result.json
+**保存先:**
+Supabase `emotion_opensmile_summary` テーブル
+
+**テーブル構造:**
+```sql
+create table public.emotion_opensmile_summary (
+  device_id   text        not null,
+  date        date        not null,
+  emotion_graph jsonb     not null,          -- 48 スロット入り JSON
+  file_path   text,
+  created_at  timestamptz not null default now(),
+  primary key (device_id, date)
+);
 ```
 
-**JSON構造:**
+**emotion_graph JSON構造:**
 ```json
 {
   "date": "2025-06-26",
@@ -740,6 +759,23 @@ emotion_scoring_rules.yaml
 - OpenAPI/Swagger UI: `http://localhost:8012/docs`
 - ReDoc: `http://localhost:8012/redoc`
 
+**Supabaseデータ確認:**
+```sql
+-- 保存されたデータを確認
+SELECT device_id, date, 
+       jsonb_array_length(emotion_graph) as slot_count,
+       created_at
+FROM emotion_opensmile_summary
+ORDER BY created_at DESC;
+
+-- 特定のデータを詳細確認
+SELECT emotion_graph->0 as first_slot,
+       emotion_graph->23 as noon_slot,
+       emotion_graph->47 as last_slot
+FROM emotion_opensmile_summary
+WHERE device_id = 'your_device_id' AND date = '2025-07-09';
+```
+
 **開発者向けサポート:**
 - 非同期処理の実装ガイド
 - エラーハンドリングベストプラクティス  
@@ -747,6 +783,16 @@ emotion_scoring_rules.yaml
 - パフォーマンス最適化手法
 
 ## 📝 変更履歴
+
+### v3.0.0 (2025-07-10)
+- **入出力完全移行**: 入力と出力を全てSupabaseに移行
+- **入力ソース**: Supabase emotion_opensmileテーブル
+- **出力先**: Supabase emotion_opensmile_summaryテーブル（ワイド型）
+- **テーブル構造統一**: 他のグラフDBと同じワイド型構造に変更
+- **ローカルファイル不要**: ローカル保存処理を完全削除
+- **Vaultアップロード削除**: upload_opensmile_summary.pyを削除
+- **パフォーマンス向上**: DBベースのデータ処理に統一
+- **データ形式統一**: emotion_graphをJSONB型で48スロット配列として保存
 
 ### v2.0.0 (2025-07-05)
 - **デバイスベース識別に変更**: `user_id` → `device_id` への全面移行

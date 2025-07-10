@@ -8,3 +8,7 @@ aiohttp>=3.8.0,<4.0.0
 
 # データ処理
 pyyaml>=6.0
+
+# Supabase クライアント
+supabase>=2.0.0
+python-dotenv>=1.0.0
