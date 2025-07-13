@@ -2,6 +2,15 @@
 
 OpenSMILE特徴量データの収集・感情スコア集計・Supabase保存を行うFastAPIベースのREST APIサービスです。
 
+## 🆕 最新アップデート (2025-07-13)
+
+### 本番環境へのデプロイとsystemd設定
+- **EC2本番環境**: AWS EC2 (3.24.16.82) に正常デプロイ完了
+- **systemdサービス化**: 自動起動設定により常時稼働を実現
+- **動作確認済み**: device_id `d067d407-cf73-4174-a9c1-d91fb60d64d0`での2025-07-10データ処理成功
+- **ディレクトリ**: `/home/ubuntu/watchme-opensmile-aggregator`
+- **Python仮想環境**: venv使用による独立した実行環境
+
 ## 🆕 最新アップデート (2025-07-10)
 
 ### 1. **WatchMe Admin統合**
@@ -218,6 +227,153 @@ APIサーバーは `http://localhost:8012` で起動します。
 ### 5️⃣ 接続確認
 ```bash
 curl http://localhost:8012/health
+```
+
+## 🚀 本番環境設定（AWS EC2）
+
+### 本番環境情報
+- **サーバー**: AWS EC2 (Ubuntu)
+- **IPアドレス**: 3.24.16.82
+- **ディレクトリ**: `/home/ubuntu/watchme-opensmile-aggregator`
+- **ポート**: 8012
+
+### 本番環境へのデプロイ手順
+
+#### 1️⃣ SSHアクセス
+```bash
+ssh -i ~/watchme-key.pem ubuntu@3.24.16.82
+```
+
+#### 2️⃣ プロジェクトディレクトリに移動
+```bash
+cd /home/ubuntu/watchme-opensmile-aggregator
+```
+
+#### 3️⃣ 仮想環境の作成と有効化
+```bash
+# 仮想環境作成（初回のみ）
+python3 -m venv venv
+
+# 仮想環境の有効化
+source venv/bin/activate
+```
+
+#### 4️⃣ 依存関係のインストール
+```bash
+pip install -r requirements.txt
+```
+
+#### 5️⃣ 環境変数の設定
+```bash
+# .envファイルの確認・編集
+vi .env
+# Supabase URLとAPIキーが正しく設定されていることを確認
+```
+
+### systemdサービス設定（自動起動）
+
+#### 1️⃣ サービスファイルの作成
+```bash
+sudo vi /etc/systemd/system/opensmile-aggregator.service
+```
+
+以下の内容を記載：
+```ini
+[Unit]
+Description=OpenSMILE Aggregator API Service
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/watchme-opensmile-aggregator
+Environment="PATH=/home/ubuntu/watchme-opensmile-aggregator/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/home/ubuntu/watchme-opensmile-aggregator/venv/bin/python /home/ubuntu/watchme-opensmile-aggregator/api_server.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+#### 2️⃣ サービスの有効化と起動
+```bash
+# systemdのリロード
+sudo systemctl daemon-reload
+
+# サービスを有効化（自動起動設定）
+sudo systemctl enable opensmile-aggregator.service
+
+# サービスを起動
+sudo systemctl start opensmile-aggregator.service
+```
+
+#### 3️⃣ サービス管理コマンド
+```bash
+# サービス状態確認
+sudo systemctl status opensmile-aggregator.service
+
+# サービス再起動
+sudo systemctl restart opensmile-aggregator.service
+
+# サービス停止
+sudo systemctl stop opensmile-aggregator.service
+
+# ログ確認（リアルタイム）
+sudo journalctl -u opensmile-aggregator.service -f
+
+# 最新100行のログ確認
+sudo journalctl -u opensmile-aggregator.service -n 100
+```
+
+### 本番環境での動作確認
+
+#### APIヘルスチェック
+```bash
+# サーバー内から
+curl http://localhost:8012/health
+
+# 外部から（ポートが開放されている場合）
+curl http://3.24.16.82:8012/health
+```
+
+#### 感情分析実行テスト
+```bash
+# テストデータで実行
+curl -X POST http://localhost:8012/analyze/opensmile-aggregator \
+  -H "Content-Type: application/json" \
+  -d '{"device_id": "d067d407-cf73-4174-a9c1-d91fb60d64d0", "date": "2025-07-10"}'
+```
+
+### トラブルシューティング
+
+#### ポートが既に使用されている場合
+```bash
+# ポート8012を使用しているプロセスを確認
+sudo ss -tlnp | grep 8012
+
+# プロセスを終了（PIDは上記コマンドで確認）
+sudo kill <PID>
+```
+
+#### サービスが起動しない場合
+```bash
+# 詳細なエラーログを確認
+sudo journalctl -u opensmile-aggregator.service -n 50 --no-pager
+
+# Pythonの直接実行でエラー確認
+cd /home/ubuntu/watchme-opensmile-aggregator
+source venv/bin/activate
+python api_server.py
+```
+
+#### 環境変数が読み込まれない場合
+```bash
+# .envファイルの存在確認
+ls -la /home/ubuntu/watchme-opensmile-aggregator/.env
+
+# 権限確認
+chmod 600 .env
 ```
 
 ## 🌐 API エンドポイント詳細仕様
