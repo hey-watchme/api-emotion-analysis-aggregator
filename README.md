@@ -2,6 +2,20 @@
 
 OpenSMILE特徴量データの収集・感情スコア集計・Supabase保存を行うFastAPIベースのREST APIサービスです。
 
+## 🆕 最新アップデート (2025-07-15) - Docker化とHTTPSエンドポイント
+
+### Docker化への移行
+- **Docker化完了**: Python venv + systemdからDocker + systemdに移行
+- **Dockerイメージ**: `watchme-opensmile-aggregator:latest`
+- **HTTPSエンドポイント**: https://api.hey-watch.me/emotion-aggregator/ でアクセス可能
+- **systemdサービス更新**: Dockerコンテナの自動起動・監視に対応
+- **動作確認済み**: device_id `d067d407-cf73-4174-a9c1-d91fb60d64d0`での2025-07-15データ処理成功（2スロット、13感情ポイント）
+
+### 外部アクセス設定
+- **Nginxリバースプロキシ**: `/emotion-aggregator/`エンドポイントを追加
+- **CORS対応**: 外部アプリケーションからのAPIコールに対応
+- **HTTPS対応**: SSL証明書による暗号化通信
+
 ## 🆕 最新アップデート (2025-07-13)
 
 ### 本番環境へのデプロイとsystemd設定
@@ -235,9 +249,26 @@ curl http://localhost:8012/health
 - **サーバー**: AWS EC2 (Ubuntu)
 - **IPアドレス**: 3.24.16.82
 - **ディレクトリ**: `/home/ubuntu/watchme-opensmile-aggregator`
-- **ポート**: 8012
+- **ポート**: 8012（内部）
+- **HTTPSエンドポイント**: https://api.hey-watch.me/emotion-aggregator/
 
-### 本番環境へのデプロイ手順
+### 本番環境での新しいアクセス方法
+
+#### 外部からのAPIアクセス（推奨）
+```bash
+# ヘルスチェック
+curl https://api.hey-watch.me/emotion-aggregator/health
+
+# メインエンドポイント
+curl https://api.hey-watch.me/emotion-aggregator/
+
+# 感情分析実行
+curl -X POST https://api.hey-watch.me/emotion-aggregator/analyze/opensmile-aggregator \
+  -H "Content-Type: application/json" \
+  -d '{"device_id": "d067d407-cf73-4174-a9c1-d91fb60d64d0", "date": "2025-07-15"}'
+```
+
+### 本番環境へのデプロイ手順（Docker化）
 
 #### 1️⃣ SSHアクセス
 ```bash
@@ -249,28 +280,20 @@ ssh -i ~/watchme-key.pem ubuntu@3.24.16.82
 cd /home/ubuntu/watchme-opensmile-aggregator
 ```
 
-#### 3️⃣ 仮想環境の作成と有効化
+#### 3️⃣ Dockerイメージのビルド
 ```bash
-# 仮想環境作成（初回のみ）
-python3 -m venv venv
-
-# 仮想環境の有効化
-source venv/bin/activate
+# Dockerイメージをビルド
+sudo docker build -t watchme-opensmile-aggregator:latest .
 ```
 
-#### 4️⃣ 依存関係のインストール
-```bash
-pip install -r requirements.txt
-```
-
-#### 5️⃣ 環境変数の設定
+#### 4️⃣ 環境変数の設定
 ```bash
 # .envファイルの確認・編集
 vi .env
 # Supabase URLとAPIキーが正しく設定されていることを確認
 ```
 
-### systemdサービス設定（自動起動）
+### systemdサービス設定（Docker化）
 
 #### 1️⃣ サービスファイルの作成
 ```bash
@@ -280,17 +303,22 @@ sudo vi /etc/systemd/system/opensmile-aggregator.service
 以下の内容を記載：
 ```ini
 [Unit]
-Description=OpenSMILE Aggregator API Service
-After=network.target
+Description=OpenSMILE Aggregator API Docker Container
+After=docker.service
+Requires=docker.service
 
 [Service]
-Type=simple
-User=ubuntu
-WorkingDirectory=/home/ubuntu/watchme-opensmile-aggregator
-Environment="PATH=/home/ubuntu/watchme-opensmile-aggregator/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-ExecStart=/home/ubuntu/watchme-opensmile-aggregator/venv/bin/python /home/ubuntu/watchme-opensmile-aggregator/api_server.py
+TimeoutStartSec=0
 Restart=always
-RestartSec=10
+RestartSec=5
+# 既存のコンテナがあれば停止・削除してから起動
+ExecStartPre=-/usr/bin/docker stop opensmile-aggregator
+ExecStartPre=-/usr/bin/docker rm opensmile-aggregator
+# Dockerコンテナを起動。ホストの8012ポートをコンテナの8012ポートにマッピング。
+# --env-file で .env ファイルから環境変数を読み込みます。
+ExecStart=/usr/bin/docker run --name opensmile-aggregator -p 8012:8012 --env-file /home/ubuntu/watchme-opensmile-aggregator/.env watchme-opensmile-aggregator:latest
+# EnvironmentFileで環境変数を読み込む
+EnvironmentFile=/home/ubuntu/watchme-opensmile-aggregator/.env
 
 [Install]
 WantedBy=multi-user.target
@@ -962,6 +990,15 @@ WHERE device_id = 'your_device_id' AND date = '2025-07-09';
 - パフォーマンス最適化手法
 
 ## 📝 変更履歴
+
+### v4.0.0 (2025-07-15) - Docker化とHTTPSエンドポイント
+- **Docker化完全移行**: Python venv + systemd → Docker + systemd
+- **HTTPSエンドポイント**: https://api.hey-watch.me/emotion-aggregator/ でアクセス可能
+- **Dockerイメージ**: watchme-opensmile-aggregator:latest
+- **systemdサービス更新**: Dockerコンテナの自動起動・監視に対応
+- **Nginxリバースプロキシ**: `/emotion-aggregator/` エンドポイントを追加
+- **CORS対応**: 外部アプリケーションからのAPIコール対応
+- **動作確認完了**: device_id `d067d407-cf73-4174-a9c1-d91fb60d64d0` での2025-07-15データ処理成功（2スロット、13感情ポイント）
 
 ### v3.0.0 (2025-07-10)
 - **入出力完全移行**: 入力と出力を全てSupabaseに移行
