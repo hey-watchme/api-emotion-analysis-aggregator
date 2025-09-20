@@ -2,6 +2,70 @@
 
 OpenSMILE特徴量データの収集・感情スコア集計・Supabase保存を行うFastAPIベースのREST APIサービスです。
 
+## 🚨 重要：本番環境デプロイ手順（必ず以下の手順に従ってください）
+
+### ⚠️ デプロイ前の注意事項
+- **他の方法でデプロイしないでください**（手動ビルド、直接SSH、独自スクリプトなど）
+- **必ず以下の公式手順を使用してください**
+- **ECRリポジトリ**: `754724220380.dkr.ecr.ap-southeast-2.amazonaws.com/watchme-api-opensmile-aggregator`
+- **コンテナ名**: `opensmile-aggregator`（変更禁止）
+- **ポート**: 8012（変更禁止）
+
+### 📋 デプロイ手順（3ステップのみ）
+
+#### Step 1: ローカルでデプロイスクリプト実行
+```bash
+# OpenSmile Aggregatorのディレクトリに移動
+cd /path/to/api/opensmile-aggregator
+
+# デプロイスクリプトを実行（これがECRにイメージをプッシュします）
+./deploy-ecr.sh
+```
+
+#### Step 2: EC2サーバーでコンテナ更新
+```bash
+# EC2にSSH接続
+ssh -i ~/watchme-key.pem ubuntu@3.24.16.82
+
+# 既存コンテナを停止・削除
+docker stop opensmile-aggregator
+docker rm opensmile-aggregator
+
+# 最新イメージを取得して起動
+cd /home/ubuntu/watchme-opensmile-aggregator
+aws ecr get-login-password --region ap-southeast-2 | docker login --username AWS --password-stdin 754724220380.dkr.ecr.ap-southeast-2.amazonaws.com
+docker pull 754724220380.dkr.ecr.ap-southeast-2.amazonaws.com/watchme-api-opensmile-aggregator:latest
+docker-compose -f docker-compose.prod.yml up -d
+```
+
+#### Step 3: 動作確認
+```bash
+# ヘルスチェック（EC2上で実行）
+curl http://localhost:8012/health
+
+# HTTPSエンドポイント確認（どこからでも実行可能）
+curl https://api.hey-watch.me/emotion-aggregator/health
+```
+
+### ❌ やってはいけないこと
+- ローカルでビルドしたイメージを手動でアップロード
+- systemdサービスの再起動（docker-composeを使用）
+- ポート番号の変更
+- コンテナ名の変更
+- 独自のデプロイスクリプトの作成
+
+### ✅ トラブルシューティング
+```bash
+# コンテナが起動しない場合
+docker logs opensmile-aggregator
+
+# ポートが使用中の場合
+sudo lsof -i :8012
+
+# メモリ不足の場合
+docker stats --no-stream
+```
+
 ## 🆕 最新アップデート (2025-07-15) - Docker化とHTTPSエンドポイント
 
 ### Docker化への移行
