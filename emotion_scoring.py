@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-感情スコアリングエンジン
+感情スコアリングエンジン (wav2vec2対応版)
 
-eGeMAPS特徴量からYAMLルールベースで8感情スコアを計算する。
-各ルールを満たすたびに1ポイント加算、スロット内で合算。
+wav2vec2の感情分類結果（4感情）を既存の8感情体系にマッピングする。
+OpenSMILE形式との後方互換性を保ちながら、新しいAIモデルの結果を処理。
 """
 
 import yaml
@@ -20,6 +20,30 @@ class EmotionScorer:
         self.rules_path = rules_path
         self.rules = self._load_rules()
         self.emotions = ["anger", "fear", "anticipation", "surprise", "joy", "sadness", "trust", "disgust"]
+        
+        # wav2vec2の4感情から8感情へのマッピング定義
+        self.emotion_mapping = {
+            'ang': {  # 怒り
+                'anger': 1.0,      # 直接マッピング
+                'disgust': 0.3,    # 怒りは嫌悪感も含む
+                'fear': 0.1        # 軽い恐怖感も含む可能性
+            },
+            'sad': {  # 悲しみ
+                'sadness': 1.0,    # 直接マッピング
+                'fear': 0.2,       # 悲しみは不安も含む
+                'trust': -0.3      # 信頼感の低下
+            },
+            'neu': {  # 中立
+                'trust': 0.5,      # 中立は安定した信頼感
+                'anticipation': 0.2 # 軽い期待感
+            },
+            'hap': {  # 喜び
+                'joy': 1.0,        # 直接マッピング
+                'surprise': 0.3,   # 喜びは驚きも含む
+                'anticipation': 0.4,  # 期待感も含む
+                'trust': 0.5       # 信頼感も高まる
+            }
+        }
     
     def _load_rules(self) -> Dict[str, Any]:
         """YAMLルールファイルを読み込み"""
@@ -81,7 +105,7 @@ class EmotionScorer:
         return scores
     
     def process_opensmile_data(self, opensmile_data: Dict[str, Any]) -> Dict[str, int]:
-        """OpenSMILEのJSONデータから感情スコアを抽出"""
+        """OpenSMILEのJSONデータから感情スコアを抽出（後方互換性用）"""
         # OpenSMILEのJSON構造に応じて特徴量を抽出
         # 通常は "features" や "data" キーの下にある
         features = {}
@@ -113,6 +137,41 @@ class EmotionScorer:
             return {emotion: 0 for emotion in self.emotions}
         
         return self.score_features(features)
+    
+    def process_wav2vec2_data(self, emotion_data: Dict[str, Any]) -> Dict[str, int]:
+        """wav2vec2の感情分類結果から8感情スコアを計算"""
+        # 初期化
+        scores = {emotion: 0 for emotion in self.emotions}
+        
+        # wav2vec2の感情スコアを取得
+        wav2vec2_scores = emotion_data.get('emotion_scores', {})
+        
+        if not wav2vec2_scores:
+            print(f"⚠️ wav2vec2感情スコアが見つかりません")
+            return scores
+        
+        # 4感情から8感情へマッピング
+        for wav2vec2_emotion, score_value in wav2vec2_scores.items():
+            if wav2vec2_emotion in self.emotion_mapping:
+                # スコアを0-100の範囲に変換（wav2vec2は0-1の確率値）
+                base_score = int(score_value * 100)
+                
+                # マッピング定義に従って8感情に分配
+                for target_emotion, weight in self.emotion_mapping[wav2vec2_emotion].items():
+                    if weight > 0:
+                        # 正の重みは加算
+                        scores[target_emotion] += int(base_score * weight)
+                    elif weight < 0:
+                        # 負の重みは減算（ただし0未満にはしない）
+                        scores[target_emotion] = max(0, scores[target_emotion] + int(base_score * weight))
+        
+        # スコアを適切な範囲に正規化（0-10の範囲に収める）
+        max_score = max(scores.values()) if max(scores.values()) > 0 else 1
+        if max_score > 10:
+            normalization_factor = 10 / max_score
+            scores = {emotion: int(score * normalization_factor) for emotion, score in scores.items()}
+        
+        return scores
     
     def create_time_slot_data(self, time_slot: str, emotion_scores: Dict[str, int]) -> Dict[str, Any]:
         """時間スロット用のデータ構造を作成"""

@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  emotion-analysis-aggregator:
+    image: 754724220380.dkr.ecr.ap-southeast-2.amazonaws.com/watchme-emotion-analysis-aggregator:latest
+    container_name: emotion-analysis-aggregator
+    ports:
+      - "127.0.0.1:8012:8012"
+    env_file:
+      - .env
+    restart: always
+    networks:
+      - watchme-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8012/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  watchme-network:
+    external: true
