@@ -37,24 +37,29 @@ class OpenSMILEAggregator:
     
     def _convert_kushinada_v2_to_emotion_format(self, supabase_data: Dict) -> Optional[Dict]:
         """
-        Kushinada v2の感情分類結果を処理用の形式に変換
+        Kushinada v2のlogits（生スコア）から各感情の最大値を取得
+
+        設計思想: 感情のスパイクを見逃さない
+        - 月に1回しか怒らない人の「その1回」を確実に捉える
+        - 各30分ブロック内の全チャンクから正の値（> 0）のみ抽出
+        - 最大値を採用してスパイクを保持
+        - 正の値がない場合は0.0（検出されなかった）
+
         features_timelineから感情スコアを抽出（4感情: neutral, joy, anger, sadness）
         """
         if not supabase_data or not supabase_data.get('features_timeline'):
             return None
-        
+
         features_timeline = supabase_data['features_timeline']
         if not features_timeline:
             return None
-        
-        # Kushinada v2の感情分類結果を集計（4感情）
-        # 各チャンク（10秒単位）の感情スコアを平均化
-        # ラベルマッピング: neutral, joy, anger, sadness
-        emotion_scores = {
-            'ang': 0.0,  # 怒り (anger)
-            'sad': 0.0,  # 悲しみ (sadness)
-            'neu': 0.0,  # 中立 (neutral)
-            'hap': 0.0   # 喜び (joy)
+
+        # 各感情のスコアを収集（リスト形式）
+        emotion_scores_list = {
+            'ang': [],  # 怒り (anger)
+            'sad': [],  # 悲しみ (sadness)
+            'neu': [],  # 中立 (neutral)
+            'hap': []   # 喜び (joy)
         }
 
         # v2のラベル名を旧形式にマッピング
@@ -65,26 +70,27 @@ class OpenSMILEAggregator:
             'joy': 'hap'
         }
 
-        chunk_count = 0
-
+        # 全チャンクから各感情のスコアを収集
         for chunk_data in features_timeline:
             if 'emotions' in chunk_data:
-                chunk_count += 1
                 for emotion in chunk_data['emotions']:
                     label = emotion.get('label')
                     score = emotion.get('score', 0.0)
                     # v2のラベル名を旧形式に変換
                     mapped_label = label_mapping.get(label, label)
-                    if mapped_label in emotion_scores:
-                        emotion_scores[mapped_label] += score
-        
-        # 平均値を計算
-        if chunk_count > 0:
-            for label in emotion_scores:
-                emotion_scores[label] = emotion_scores[label] / chunk_count
-        
+                    if mapped_label in emotion_scores_list:
+                        emotion_scores_list[mapped_label].append(score)
+
+        # 各感情の最大値を取得（正の値のみ、なければ0.0）
+        emotion_max_scores = {}
+        for label, scores in emotion_scores_list.items():
+            # 正の値（> 0）のみ抽出
+            positive_scores = [s for s in scores if s > 0]
+            # 最大値を採用（正の値がない場合は0.0）
+            emotion_max_scores[label] = max(positive_scores) if positive_scores else 0.0
+
         return {
-            "emotion_scores": emotion_scores,
+            "emotion_scores": emotion_max_scores,
             "metadata": {
                 "device_id": supabase_data.get('device_id'),
                 "date": supabase_data.get('date'),
