@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
-感情分析データ集計ツール (wav2vec2 + Superb対応版)
+感情分析データ集計ツール (Kushinada v2対応版)
 
-Supabaseのemotion_opensmileテーブルからwav2vec2による感情分類データを収集し、
+Supabaseのemotion_opensmileテーブルからKushinada v2による感情分類データを収集し、
 日次集計結果をSupabaseのemotion_opensmile_summaryテーブルに保存する。
 30分スロット単位で最大48個のデータを非同期処理で取得・解析する。
+
+Kushinada v2の感情ラベル: neutral, joy, anger, sadness (4種類)
 """
 
 import asyncio
@@ -33,10 +35,10 @@ class OpenSMILEAggregator:
                 slots.append(f"{hour:02d}-{minute:02d}")
         return slots
     
-    def _convert_wav2vec2_to_emotion_format(self, supabase_data: Dict) -> Optional[Dict]:
+    def _convert_kushinada_v2_to_emotion_format(self, supabase_data: Dict) -> Optional[Dict]:
         """
-        wav2vec2の感情分類結果を処理用の形式に変換
-        features_timelineから感情スコアを抽出
+        Kushinada v2の感情分類結果を処理用の形式に変換
+        features_timelineから感情スコアを抽出（4感情: neutral, joy, anger, sadness）
         """
         if not supabase_data or not supabase_data.get('features_timeline'):
             return None
@@ -45,25 +47,36 @@ class OpenSMILEAggregator:
         if not features_timeline:
             return None
         
-        # wav2vec2の感情分類結果を集計
-        # 各チャンク（30秒単位）の感情スコアを平均化
+        # Kushinada v2の感情分類結果を集計（4感情）
+        # 各チャンク（10秒単位）の感情スコアを平均化
+        # ラベルマッピング: neutral, joy, anger, sadness
         emotion_scores = {
-            'ang': 0.0,  # 怒り
-            'sad': 0.0,  # 悲しみ
-            'neu': 0.0,  # 中立
-            'hap': 0.0   # 喜び
+            'ang': 0.0,  # 怒り (anger)
+            'sad': 0.0,  # 悲しみ (sadness)
+            'neu': 0.0,  # 中立 (neutral)
+            'hap': 0.0   # 喜び (joy)
         }
-        
+
+        # v2のラベル名を旧形式にマッピング
+        label_mapping = {
+            'anger': 'ang',
+            'sadness': 'sad',
+            'neutral': 'neu',
+            'joy': 'hap'
+        }
+
         chunk_count = 0
-        
+
         for chunk_data in features_timeline:
             if 'emotions' in chunk_data:
                 chunk_count += 1
                 for emotion in chunk_data['emotions']:
                     label = emotion.get('label')
                     score = emotion.get('score', 0.0)
-                    if label in emotion_scores:
-                        emotion_scores[label] += score
+                    # v2のラベル名を旧形式に変換
+                    mapped_label = label_mapping.get(label, label)
+                    if mapped_label in emotion_scores:
+                        emotion_scores[mapped_label] += score
         
         # 平均値を計算
         if chunk_count > 0:
@@ -97,8 +110,8 @@ class OpenSMILEAggregator:
                 print(f"🔍 スロット {slot} のデータ取得中...")
                 data = await self.supabase_service.fetch_opensmile_data(device_id, date, slot)
                 if data:
-                    # wav2vec2形式に変換
-                    emotion_data = self._convert_wav2vec2_to_emotion_format(data)
+                    # Kushinada v2形式に変換
+                    emotion_data = self._convert_kushinada_v2_to_emotion_format(data)
                     if emotion_data:
                         results[slot] = emotion_data
                         print(f"取得完了: {slot}")
@@ -107,8 +120,8 @@ class OpenSMILEAggregator:
             for data in all_data:
                 time_block = data.get('time_block')
                 if time_block:
-                    # wav2vec2形式に変換
-                    emotion_data = self._convert_wav2vec2_to_emotion_format(data)
+                    # Kushinada v2形式に変換
+                    emotion_data = self._convert_kushinada_v2_to_emotion_format(data)
                     if emotion_data:
                         results[time_block] = emotion_data
                         print(f"取得完了: {time_block}")
@@ -116,30 +129,29 @@ class OpenSMILEAggregator:
         print(f"データ取得完了: {len(results)}/{len(self.time_slots)} スロット")
         return results
     
-    def process_emotion_scores(self, slot_data: Dict[str, Dict]) -> Dict[str, Dict[str, int]]:
-        """wav2vec2の感情分類結果から8感情スコアを計算"""
+    def process_emotion_scores(self, slot_data: Dict[str, Dict]) -> Dict[str, Dict[str, float]]:
+        """Kushinada v2の感情分類結果（4感情）をそのまま処理"""
         print("感情スコア処理開始...")
-        
+
         slot_scores = {}
-        total_emotions = 0
-        
+
         for slot, emotion_data in slot_data.items():
             try:
-                # wav2vec2の感情スコアから8感情にマッピング
-                emotion_scores = self.emotion_scorer.process_wav2vec2_data(emotion_data)
+                # Kushinada v2の感情スコア（4感情）をそのまま取得
+                emotion_scores = self.emotion_scorer.process_kushinada_v2_data(emotion_data)
                 slot_scores[slot] = emotion_scores
-                
+
                 # 統計情報
-                total_score = sum(emotion_scores.values())
-                total_emotions += total_score
-                print(f"スロット {slot}: 感情スコア合計 {total_score}")
-                
+                max_emotion = max(emotion_scores, key=emotion_scores.get)
+                max_score = emotion_scores[max_emotion]
+                print(f"スロット {slot}: 主要感情={max_emotion} ({max_score:.3f})")
+
             except Exception as e:
                 print(f"❌ スロット {slot} の感情分析エラー: {e}")
-                # エラー時は全て0
-                slot_scores[slot] = {emotion: 0 for emotion in self.emotion_scorer.emotions}
-        
-        print(f"感情スコア処理完了: 総感情ポイント数 {total_emotions}")
+                # エラー時は全て0.0
+                slot_scores[slot] = {emotion: 0.0 for emotion in self.emotion_scorer.emotions}
+
+        print(f"感情スコア処理完了: {len(slot_scores)} スロット処理")
         return slot_scores
     
     async def save_result_to_supabase(self, result: Dict, device_id: str, date: str) -> bool:
@@ -156,7 +168,7 @@ class OpenSMILEAggregator:
     
     async def run(self, device_id: str, date: str) -> Dict[str, Any]:
         """メイン処理実行"""
-        print(f"感情分析集計処理開始 (wav2vec2): {device_id}, {date}")
+        print(f"感情分析集計処理開始 (Kushinada v2): {device_id}, {date}")
         
         # データ取得
         slot_data = await self.fetch_all_data(device_id, date)
@@ -183,29 +195,24 @@ class OpenSMILEAggregator:
         
         # 結果をSupabaseに保存
         success = await self.save_result_to_supabase(result, device_id, date)
-        
-        # 総感情ポイント計算
-        total_emotion_points = sum(
-            sum(slot.values()) for slot in slot_scores.values()
-        )
-        
+
         if success:
             print("感情分析集計処理完了")
         else:
             print("感情分析集計処理失敗")
-        
+
         return {
             "success": success,
             "has_data": True,
-            "message": f"感情分析が完了しました",
+            "message": f"感情分析が完了しました（4感情: neutral, joy, anger, sadness）",
             "processed_slots": len(slot_data),
-            "total_emotion_points": total_emotion_points
+            "total_emotion_points": len(slot_data)  # 処理したスロット数を返す
         }
 
 
 async def main():
     """コマンドライン実行用メイン関数"""
-    parser = argparse.ArgumentParser(description="感情分析データ集計ツール (wav2vec2版)")
+    parser = argparse.ArgumentParser(description="感情分析データ集計ツール (Kushinada v2版)")
     parser.add_argument("device_id", help="デバイスID（例: device123）")
     parser.add_argument("date", help="対象日付（YYYY-MM-DD形式）")
     

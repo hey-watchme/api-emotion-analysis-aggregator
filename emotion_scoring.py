@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
-感情スコアリングエンジン (wav2vec2対応版)
+感情スコアリングエンジン (Kushinada v2対応版)
 
-wav2vec2の感情分類結果（4感情）を既存の8感情体系にマッピングする。
-OpenSMILE形式との後方互換性を保ちながら、新しいAIモデルの結果を処理。
+Kushinada v2の感情分類結果（4感情: neutral, joy, anger, sadness）をそのまま出力。
 """
 
 import yaml
@@ -15,35 +14,12 @@ from datetime import datetime
 
 class EmotionScorer:
     """感情スコアリングクラス"""
-    
+
     def __init__(self, rules_path: str = "emotion_scoring_rules.yaml"):
         self.rules_path = rules_path
         self.rules = self._load_rules()
-        self.emotions = ["anger", "fear", "anticipation", "surprise", "joy", "sadness", "trust", "disgust"]
-        
-        # wav2vec2の4感情から8感情へのマッピング定義
-        self.emotion_mapping = {
-            'ang': {  # 怒り
-                'anger': 1.0,      # 直接マッピング
-                'disgust': 0.3,    # 怒りは嫌悪感も含む
-                'fear': 0.1        # 軽い恐怖感も含む可能性
-            },
-            'sad': {  # 悲しみ
-                'sadness': 1.0,    # 直接マッピング
-                'fear': 0.2,       # 悲しみは不安も含む
-                'trust': -0.3      # 信頼感の低下
-            },
-            'neu': {  # 中立
-                'trust': 0.5,      # 中立は安定した信頼感
-                'anticipation': 0.2 # 軽い期待感
-            },
-            'hap': {  # 喜び
-                'joy': 1.0,        # 直接マッピング
-                'surprise': 0.3,   # 喜びは驚きも含む
-                'anticipation': 0.4,  # 期待感も含む
-                'trust': 0.5       # 信頼感も高まる
-            }
-        }
+        # Kushinada v2の4感情
+        self.emotions = ["neutral", "joy", "anger", "sadness"]
     
     def _load_rules(self) -> Dict[str, Any]:
         """YAMLルールファイルを読み込み"""
@@ -138,50 +114,43 @@ class EmotionScorer:
         
         return self.score_features(features)
     
-    def process_wav2vec2_data(self, emotion_data: Dict[str, Any]) -> Dict[str, int]:
-        """wav2vec2の感情分類結果から8感情スコアを計算"""
+    def process_kushinada_v2_data(self, emotion_data: Dict[str, Any]) -> Dict[str, float]:
+        """Kushinada v2の感情分類結果（4感情）をそのまま返す"""
         # 初期化
-        scores = {emotion: 0 for emotion in self.emotions}
-        
-        # wav2vec2の感情スコアを取得
-        wav2vec2_scores = emotion_data.get('emotion_scores', {})
-        
-        if not wav2vec2_scores:
-            print(f"⚠️ wav2vec2感情スコアが見つかりません")
+        scores = {emotion: 0.0 for emotion in self.emotions}
+
+        # Kushinada v2の感情スコアを取得
+        kushinada_scores = emotion_data.get('emotion_scores', {})
+
+        if not kushinada_scores:
+            print(f"⚠️ Kushinada v2感情スコアが見つかりません")
             return scores
-        
-        # 4感情から8感情へマッピング
-        for wav2vec2_emotion, score_value in wav2vec2_scores.items():
-            if wav2vec2_emotion in self.emotion_mapping:
-                # スコアを0-100の範囲に変換（wav2vec2は0-1の確率値）
-                base_score = int(score_value * 100)
-                
-                # マッピング定義に従って8感情に分配
-                for target_emotion, weight in self.emotion_mapping[wav2vec2_emotion].items():
-                    if weight > 0:
-                        # 正の重みは加算
-                        scores[target_emotion] += int(base_score * weight)
-                    elif weight < 0:
-                        # 負の重みは減算（ただし0未満にはしない）
-                        scores[target_emotion] = max(0, scores[target_emotion] + int(base_score * weight))
-        
-        # スコアを適切な範囲に正規化（0-10の範囲に収める）
-        max_score = max(scores.values()) if max(scores.values()) > 0 else 1
-        if max_score > 10:
-            normalization_factor = 10 / max_score
-            scores = {emotion: int(score * normalization_factor) for emotion, score in scores.items()}
-        
+
+        # 内部ラベル（ang, sad, neu, hap）をKushinada v2ラベルにマッピング
+        label_mapping = {
+            'ang': 'anger',
+            'sad': 'sadness',
+            'neu': 'neutral',
+            'hap': 'joy'
+        }
+
+        # スコアをそのまま（0.0-1.0の範囲で）設定
+        for internal_label, score_value in kushinada_scores.items():
+            v2_label = label_mapping.get(internal_label)
+            if v2_label and v2_label in scores:
+                scores[v2_label] = float(score_value)
+
         return scores
     
-    def create_time_slot_data(self, time_slot: str, emotion_scores: Dict[str, int]) -> Dict[str, Any]:
+    def create_time_slot_data(self, time_slot: str, emotion_scores: Dict[str, float]) -> Dict[str, Any]:
         """時間スロット用のデータ構造を作成"""
         return {
             "time": f"{time_slot[:2]}:{time_slot[3:]}",  # "00-00" -> "00:00"
             **emotion_scores
         }
-    
-    def generate_full_day_data(self, slot_scores: Dict[str, Dict[str, int]], date: str) -> Dict[str, Any]:
-        """1日分の感情グラフデータを生成（48スロット）"""
+
+    def generate_full_day_data(self, slot_scores: Dict[str, Dict[str, float]], date: str) -> Dict[str, Any]:
+        """1日分の感情グラフデータを生成（48スロット、4感情）"""
         time_slots = []
         for hour in range(24):
             for minute in [0, 30]:
@@ -193,11 +162,11 @@ class EmotionScorer:
                 # データがある場合
                 emotion_data = self.create_time_slot_data(slot, slot_scores[slot])
             else:
-                # データがない場合は全て0
-                emotion_data = self.create_time_slot_data(slot, {emotion: 0 for emotion in self.emotions})
-            
+                # データがない場合は全て0.0
+                emotion_data = self.create_time_slot_data(slot, {emotion: 0.0 for emotion in self.emotions})
+
             emotion_graph.append(emotion_data)
-        
+
         return {
             "date": date,
             "emotion_graph": emotion_graph
@@ -207,26 +176,16 @@ class EmotionScorer:
 def main():
     """テスト用メイン関数"""
     scorer = EmotionScorer()
-    
-    # サンプル特徴量でテスト
-    sample_features = {
-        "Loudness_sma3": 0.35,
-        "shimmerLocaldB_sma3nz": 0.45,
-        "HNRdBACF_sma3nz": 0.8,
-        "logRelF0-H1-A3_sma3nz": 12.0
-    }
-    
-    scores = scorer.score_features(sample_features)
-    print("感情スコア:", scores)
-    
-    # 1日分のデータ生成テスト
+
+    # 1日分のデータ生成テスト（4感情）
     slot_scores = {
-        "04-30": {"anger": 4, "fear": 1, "anticipation": 2, "surprise": 1, "joy": 1, "sadness": 1, "trust": 1, "disgust": 1},
-        "07-00": {"anger": 0, "fear": 0, "anticipation": 2, "surprise": 1, "joy": 8, "sadness": 0, "trust": 4, "disgust": 0}
+        "04-30": {"neutral": 0.1, "joy": 0.2, "anger": 0.5, "sadness": 0.2},
+        "07-00": {"neutral": 0.2, "joy": 0.7, "anger": 0.05, "sadness": 0.05}
     }
-    
+
     full_day = scorer.generate_full_day_data(slot_scores, "2025-06-26")
-    print(f"\n1日分データ: {len(full_day['emotion_graph'])} スロット")
+    print(f"1日分データ: {len(full_day['emotion_graph'])} スロット")
+    print(f"サンプル: {full_day['emotion_graph'][0]}")
 
 
 if __name__ == "__main__":
