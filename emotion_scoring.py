@@ -150,22 +150,18 @@ class EmotionScorer:
         }
 
     def generate_full_day_data(self, slot_scores: Dict[str, Dict[str, float]], date: str) -> Dict[str, Any]:
-        """1日分の感情グラフデータを生成（48スロット、4感情）"""
+        """1日分の感情グラフデータを生成（実際にデータがあるスロットのみ、4感情）"""
         time_slots = []
         for hour in range(24):
             for minute in [0, 30]:
                 time_slots.append(f"{hour:02d}-{minute:02d}")
-        
+
         emotion_graph = []
         for slot in time_slots:
             if slot in slot_scores:
-                # データがある場合
+                # データがある場合のみ追加
                 emotion_data = self.create_time_slot_data(slot, slot_scores[slot])
-            else:
-                # データがない場合は全て0.0
-                emotion_data = self.create_time_slot_data(slot, {emotion: 0.0 for emotion in self.emotions})
-
-            emotion_graph.append(emotion_data)
+                emotion_graph.append(emotion_data)
 
         return {
             "date": date,

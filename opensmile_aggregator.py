@@ -181,14 +181,11 @@ class OpenSMILEAggregator:
         
         if not slot_data:
             print(f"指定された日付（{date}）にはデータが存在しません")
-            # データがない場合でも、空のデータを保存（全スロット0）
-            empty_scores = {}
-            result = self.emotion_scorer.generate_full_day_data(empty_scores, date)
-            success = await self.save_result_to_supabase(result, device_id, date)
+            # データがない場合は保存しない（未来の時間ブロックを作成しないため）
             return {
-                "success": success,
+                "success": True,
                 "has_data": False,
-                "message": f"指定された日付（{date}）にはデータが存在しません。空のデータを保存しました。",
+                "message": f"指定された日付（{date}）にはデータが存在しません。",
                 "processed_slots": 0,
                 "total_emotion_points": 0
             }
