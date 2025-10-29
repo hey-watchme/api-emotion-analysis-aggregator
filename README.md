@@ -2,6 +2,72 @@
 
 Kushinada v2の4感情分析結果の収集・集計・Supabase保存を行うFastAPIベースのREST APIサービスです。
 
+---
+
+## 🗺️ ルーティング詳細
+
+| 項目 | 値 | 説明 |
+|------|-----|------|
+| **🏷️ サービス名** | Emotion Aggregator API | 感情分析データの集計・統合 |
+| **📦 機能** | 4感情データ集計 | neutral, joy, anger, sadness |
+| | | |
+| **🌐 外部アクセス（Nginx）** | | |
+| └ 公開エンドポイント | `https://api.hey-watch.me/emotion-analysis/aggregator/` | ✅ 統一命名規則に準拠（2025-10-29） |
+| └ Nginx設定ファイル | `/etc/nginx/sites-available/api.hey-watch.me` | 74-96行目 |
+| └ proxy_pass先 | `http://localhost:8012/` | 内部転送先 |
+| └ タイムアウト | 180秒 | read/connect/send |
+| | | |
+| **🔌 API内部エンドポイント** | | |
+| └ ヘルスチェック | `/health` | GET |
+| └ **集計処理（重要）** | `/analyze/opensmile-aggregator` | POST - Lambdaから呼ばれる |
+| | | |
+| **🐳 Docker/コンテナ** | | |
+| └ コンテナ名 | `emotion-analysis-aggregator` | `docker ps`で表示される名前 |
+| └ ポート（内部） | 8012 | コンテナ内 |
+| └ ポート（公開） | `127.0.0.1:8012:8012` | ローカルホストのみ |
+| └ ヘルスチェック | `/health` | Docker healthcheck |
+| | | |
+| **☁️ AWS ECR** | | |
+| └ リポジトリ名 | `watchme-api-opensmile-aggregator` | ⚠️ 統一前の名前 |
+| └ リージョン | ap-southeast-2 (Sydney) | |
+| └ URI | `754724220380.dkr.ecr.ap-southeast-2.amazonaws.com/watchme-api-opensmile-aggregator:latest` | |
+| | | |
+| **⚙️ systemd** | | |
+| └ サービス名 | `emotion-analysis-aggregator.service` | ✅ 統一済み |
+| └ 起動コマンド | `docker-compose up -d` | |
+| └ 自動起動 | enabled | サーバー再起動時に自動起動 |
+| | | |
+| **📂 ディレクトリ** | | |
+| └ ソースコード | `/Users/kaya.matsumoto/projects/watchme/api/emotion-analysis/aggregator` | ローカル |
+| └ GitHubリポジトリ | `hey-watchme/api-emotion-analysis-aggregator` | |
+| └ EC2配置場所 | `/home/ubuntu/watchme-opensmile-aggregator` | |
+| | | |
+| **🔗 呼び出し元** | | |
+| └ Lambda関数 | `watchme-audio-worker` | Emotion Feature Extractor成功時に自動起動 |
+| └ 呼び出しURL | ✅ `https://api.hey-watch.me/emotion-analysis/aggregator/analyze/opensmile-aggregator` | **統一命名規則に準拠（2025-10-29修正）** |
+| └ 環境変数 | `API_BASE_URL=https://api.hey-watch.me` | Lambda内 |
+
+### ✅ 統一命名規則への対応完了（2025-10-29）
+
+**API命名統一タスクに基づき、以下を修正**:
+
+1. **Nginxエンドポイント**: `/emotion-aggregator/` → `/emotion-analysis/aggregator/`
+2. **Lambda関数**: URL修正完了（watchme-audio-worker）
+3. **統一原則**: `/{domain}/{service}/` に準拠
+   - domain: `emotion-analysis`
+   - service: `aggregator`
+
+**修正完了ファイル**:
+- ✅ `/watchme/server-configs/sites-available/api.hey-watch.me`
+- ✅ `/watchme/server-configs/lambda-functions/watchme-audio-worker/lambda_function.py`
+- ✅ `/watchme/api/emotion-analysis/aggregator/README.md`（このファイル）
+
+**注意**:
+- エンドポイントのみ統一完了（オプション1）
+- ECRリポジトリ名は将来統一予定: `watchme-api-opensmile-aggregator` → `watchme-emotion-analysis-aggregator`
+
+---
+
 ## 🚨 重要：本番環境デプロイ手順（必ず以下の手順に従ってください）
 
 ### ⚠️ デプロイ前の注意事項
