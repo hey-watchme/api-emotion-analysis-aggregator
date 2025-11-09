@@ -2,8 +2,8 @@
 """
 感情分析データ集計ツール (Kushinada v2対応版)
 
-Supabaseのemotion_opensmileテーブルからKushinada v2による感情分類データを収集し、
-日次集計結果をSupabaseのemotion_opensmile_summaryテーブルに保存する。
+Supabaseのaudio_features.emotion_extractor_resultからKushinada v2による感情分類データを収集し、
+日次集計結果をaudio_aggregator.emotion_aggregator_resultに保存する。
 30分スロット単位で最大48個のデータを非同期処理で取得・解析する。
 
 Kushinada v2の感情ラベル: neutral, joy, anger, sadness (4種類)
@@ -45,13 +45,13 @@ class OpenSMILEAggregator:
         - 最大値を採用してスパイクを保持
         - 正の値がない場合は0.0（検出されなかった）
 
-        features_timelineから感情スコアを抽出（4感情: neutral, joy, anger, sadness）
+        emotion_extractor_resultから感情スコアを抽出（4感情: neutral, joy, anger, sadness）
         """
-        if not supabase_data or not supabase_data.get('features_timeline'):
+        if not supabase_data or not supabase_data.get('emotion_extractor_result'):
             return None
 
-        features_timeline = supabase_data['features_timeline']
-        if not features_timeline:
+        emotion_extractor_result = supabase_data['emotion_extractor_result']
+        if not emotion_extractor_result:
             return None
 
         # 各感情のスコアを収集（リスト形式）
@@ -71,7 +71,7 @@ class OpenSMILEAggregator:
         }
 
         # 全チャンクから各感情のスコアを収集
-        for chunk_data in features_timeline:
+        for chunk_data in emotion_extractor_result:
             if 'emotions' in chunk_data:
                 for emotion in chunk_data['emotions']:
                     label = emotion.get('label')
@@ -161,15 +161,15 @@ class OpenSMILEAggregator:
         return slot_scores
     
     async def save_result_to_supabase(self, result: Dict, device_id: str, date: str) -> bool:
-        """結果をSupabaseのemotion_opensmile_summaryテーブルに保存"""
+        """結果をaudio_aggregator.emotion_aggregator_resultに保存"""
         emotion_graph = result.get("emotion_graph", [])
         success = await self.supabase_service.save_emotion_summary(device_id, date, emotion_graph)
-        
+
         if success:
-            print(f"結果保存完了: Supabase emotion_opensmile_summary")
+            print(f"結果保存完了: audio_aggregator.emotion_aggregator_result")
         else:
             print(f"結果保存失敗")
-        
+
         return success
     
     async def run(self, device_id: str, date: str) -> Dict[str, Any]:
@@ -234,7 +234,7 @@ async def main():
     
     if success:
         print(f"\n✅ 処理完了")
-        print(f"結果: Supabase emotion_opensmile_summaryテーブルに保存")
+        print(f"結果: audio_aggregator.emotion_aggregator_resultに保存")
     else:
         print("\n❌ 処理失敗")
 

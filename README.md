@@ -1,6 +1,9 @@
-# Kushinada v2 感情分析集計API - 完全仕様書
+# Emotion Aggregator API - 完全仕様書
 
 Kushinada v2の4感情分析結果の収集・集計・Supabase保存を行うFastAPIベースのREST APIサービスです。
+
+**データソース**: `audio_features.emotion_extractor_result`
+**保存先**: `audio_aggregator.emotion_aggregator_result`
 
 ---
 
@@ -265,10 +268,10 @@ neutral_max = 0.0  # その感情は検出されなかった
 - 「指定された日付にはデータが存在しません」というメッセージを返す
 - ライフログツールとして測定していない日があっても問題なく処理
 
-### 4. **Supabase完全移行**
-- 入力: Vault API → Supabase emotion_opensmileテーブル
-- 出力: ローカルファイル + Vault API → Supabase emotion_opensmile_summaryテーブル（ワイド型JSONB）
-- upload_opensmile_summary.pyを削除（不要になったため）
+### 4. **Supabase完全移行（2025-11-09更新）**
+- 入力: `audio_features.emotion_extractor_result`（JSONB型）
+- 出力: `audio_aggregator.emotion_aggregator_result`（JSONB型、1日1レコード）
+- 処理タイムスタンプ: `emotion_aggregator_processed_at`
 
 ## 📋 コードベース調査結果
 
@@ -279,15 +282,16 @@ neutral_max = 0.0  # その感情は検出されなかった
 **言語**: Python 3.11.8+  
 **フレームワーク**: FastAPI + aiohttp + PyYAML + Supabase
 
-### ✅ 動作検証結果
-**検証日**: 2025-07-09  
-**データソース**: Supabase emotion_opensmileテーブル  
-**結果**: 正常動作確認済み
+### ✅ 動作検証結果（2025-11-09更新）
+**検証日**: 2025-11-09
+**データソース**: `audio_features.emotion_extractor_result`
+**保存先**: `audio_aggregator.emotion_aggregator_result`
+**結果**: テーブル統一完了
 
 - ✅ API server 起動成功（ポート8012）
-- ✅ Supabaseからのデータ取得成功（emotion_opensmileテーブル）
-- ✅ 感情分析エンジン動作確認（8感情分類）
-- ✅ Supabase保存成功（emotion_opensmile_summaryテーブル）
+- ✅ audio_featuresテーブルからのデータ取得成功
+- ✅ 感情分析エンジン動作確認（4感情分類）
+- ✅ audio_aggregatorテーブル保存成功
 
 ### 📊 主要機能の詳細分析
 
@@ -307,10 +311,10 @@ neutral_max = 0.0  # その感情は検出されなかった
    - リアルタイム進捗監視（0-100%）
    - タスク状況管理（started/running/completed/failed）
 
-4. **データ統合**
-   - Supabaseからのデータ取得: emotion_opensmileテーブル
-   - Supabaseへのデータ保存: emotion_opensmile_summaryテーブル（ワイド型JSONB形式）
-   - 他のグラフデータベースと同じテーブル構造を採用
+4. **データ統合（2025-11-09更新）**
+   - Supabaseからのデータ取得: `audio_features.emotion_extractor_result`
+   - Supabaseへのデータ保存: `audio_aggregator.emotion_aggregator_result`
+   - 1日1レコード、Primary Key `(device_id, date)`
 
 #### 📁 **ファイル別機能分析**
 
@@ -383,10 +387,10 @@ python-dotenv>=1.0.0  # 環境変数管理
 ## 🎯 システム概要
 
 **🌐 REST API**: FastAPIベースの非同期APIサーバー  
-**📥 データ収集**: Supabase emotion_opensmileテーブルからOpenSMILEデータを取得  
-**🎭 感情分析**: eGeMAPS特徴量ベースのYAMLルール感情スコアリング  
-**📈 グラフ生成**: 1日48スロット分の感情推移データ生成  
-**📤 データアップロード**: Vault APIへ自動アップロード  
+**📥 データ収集**: `audio_features.emotion_extractor_result`から感情データを取得
+**🎭 感情分析**: Kushinada v2による4感情分類（neutral, joy, anger, sadness）
+**📈 グラフ生成**: 1日48スロット分の感情推移データ生成
+**💾 データ保存**: `audio_aggregator.emotion_aggregator_result`に保存
 **🔄 バックグラウンド処理**: 長時間処理の非同期実行とタスク管理
 
 ## 📋 システム要件
@@ -399,8 +403,7 @@ python-dotenv>=1.0.0  # 環境変数管理
 - asyncio（非同期処理）
 
 **🌐 ネットワーク:**
-- Supabase APIへの接続（emotion_opensmileテーブル）
-- Vault API `https://api.hey-watch.me/upload/analysis/opensmile-summary` へのHTTPS接続
+- Supabase APIへの接続（audio_featuresテーブル）
 
 **💾 ストレージ:**
 - ローカルディスク: `/Users/kaya.matsumoto/data/data_accounts/`
@@ -830,21 +833,20 @@ emotion_opensmile_summary テーブル保存
 ### 感情分析結果
 
 **保存先:**
-Supabase `emotion_opensmile_summary` テーブル
+`audio_aggregator.emotion_aggregator_result`（JSONB型）
 
 **テーブル構造:**
 ```sql
-create table public.emotion_opensmile_summary (
-  device_id   text        not null,
-  date        date        not null,
-  emotion_graph jsonb     not null,          -- 48 スロット入り JSON
-  file_path   text,
-  created_at  timestamptz not null default now(),
+create table public.audio_aggregator (
+  device_id text not null,
+  date date not null,
+  emotion_aggregator_result jsonb,
+  emotion_aggregator_processed_at timestamptz,
   primary key (device_id, date)
 );
 ```
 
-**emotion_graph JSON構造（Kushinada v2: 4感情）:**
+**emotion_aggregator_result JSON構造（Kushinada v2: 4感情）:**
 ```json
 {
   "date": "2025-10-26",
@@ -1185,18 +1187,19 @@ emotion_scoring_rules.yaml
 **Supabaseデータ確認:**
 ```sql
 -- 保存されたデータを確認
-SELECT device_id, date, 
-       jsonb_array_length(emotion_graph) as slot_count,
-       created_at
-FROM emotion_opensmile_summary
-ORDER BY created_at DESC;
+SELECT device_id, date,
+       jsonb_array_length(emotion_aggregator_result) as slot_count,
+       emotion_aggregator_processed_at
+FROM audio_aggregator
+WHERE emotion_aggregator_result IS NOT NULL
+ORDER BY emotion_aggregator_processed_at DESC;
 
 -- 特定のデータを詳細確認
-SELECT emotion_graph->0 as first_slot,
-       emotion_graph->23 as noon_slot,
-       emotion_graph->47 as last_slot
-FROM emotion_opensmile_summary
-WHERE device_id = 'your_device_id' AND date = '2025-07-09';
+SELECT emotion_aggregator_result->0 as first_slot,
+       emotion_aggregator_result->23 as noon_slot,
+       emotion_aggregator_result->47 as last_slot
+FROM audio_aggregator
+WHERE device_id = 'your_device_id' AND date = '2025-11-09';
 ```
 
 **開発者向けサポート:**
@@ -1206,6 +1209,13 @@ WHERE device_id = 'your_device_id' AND date = '2025-07-09';
 - パフォーマンス最適化手法
 
 ## 📝 変更履歴
+
+### v6.0.0 (2025-11-09) - テーブル構造統一
+- **データソース変更**: `emotion_opensmile` → `audio_features.emotion_extractor_result`
+- **保存先変更**: `emotion_opensmile_summary` → `audio_aggregator.emotion_aggregator_result`
+- **1日1レコード**: Primary Key `(device_id, date)` で管理
+- **タイムスタンプ追加**: `emotion_aggregator_processed_at` カラム
+- **README更新**: 新しいテーブル構造に合わせて全体を更新
 
 ### v5.0.0 (2025-10-26) - Kushinada v2 4感情対応
 - **感情数変更**: 8感情 → 4感情（neutral, joy, anger, sadness）
